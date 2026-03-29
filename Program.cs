@@ -72,17 +72,6 @@ foreach (var cat in Enum.GetValues<TaskCategories>())
     categoryNames[(int)cat] = await goalRepo.GetCategoryNameAsync((int)cat);
 string GetCategoryName(int id) => categoryNames.TryGetValue(id, out var name) ? name : $"Category {id}";
 
-// Seed defaults on first run
-if (!await goalRepo.HasAnyGoalsAsync())
-{
-    await SeedDefaultGoalsAsync(goalRepo);
-    if (plain)
-        Console.WriteLine("Seeded default goals. Run 'goals list' to view, 'goals add'/'goals remove' to modify.");
-    else
-        AnsiConsole.MarkupLine("[blue]Seeded default goals. Run [bold]goals list[/] to view, [bold]goals add[/]/[bold]goals remove[/] to modify.[/]");
-    Console.WriteLine();
-}
-
 if (plain)
     Console.WriteLine("=== Goal Tracker ===");
 else
@@ -159,40 +148,4 @@ void PrintError(string message)
         Console.Error.WriteLine($"ERROR: {message}");
     else
         AnsiConsole.MarkupLine($"[red]{Markup.Escape(message)}[/]");
-}
-
-static async Task SeedDefaultGoalsAsync(GoalRepository repo)
-{
-    var weekendExclude = new HashSet<DayOfWeek> { DayOfWeek.Saturday, DayOfWeek.Sunday };
-
-    await repo.AddDailyGoalAsync(new DailyGoal
-    {
-        CategoryId = (int)TaskCategories.Job,
-        TotalTarget = TimeSpan.FromHours(8),
-        ExcludedDays = weekendExclude
-    });
-    await repo.AddDailyGoalAsync(new DailyGoal
-    {
-        CategoryId = (int)TaskCategories.LCReview,
-        TotalTarget = TimeSpan.FromHours(1),
-        ExcludedDays = []
-    });
-    await repo.AddDailyGoalAsync(new DailyGoal
-    {
-        CategoryId = (int)TaskCategories.LCNew,
-        TotalTarget = TimeSpan.FromHours(1),
-        ExcludedDays = []
-    });
-    await repo.AddDailyGoalAsync(new DailyGoal
-    {
-        CategoryId = (int)TaskCategories.Anki,
-        TotalTarget = TimeSpan.FromMinutes(30),
-        ExcludedDays = []
-    });
-
-    await repo.AddWeeklyGoalAsync(new WeeklyGoal
-    {
-        CategoryId = (int)TaskCategories.Job,
-        TotalTarget = TimeSpan.FromHours(40)
-    });
 }
