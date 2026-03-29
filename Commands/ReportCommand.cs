@@ -16,12 +16,14 @@ public static class ReportCommand
     };
 
     public static async Task RunAsync(GoalRepository goalRepo, TimeEntryReader reader,
-        StreakCalculator streakCalc, Func<int, string> getCategoryName, bool plain)
+        StreakCalculator streakCalc, HabitRepository habitRepo,
+        Func<int, string> getCategoryName, bool plain)
     {
         var dailyGoals = await goalRepo.GetDailyGoalsAsync();
         var weeklyGoals = await goalRepo.GetWeeklyGoalsAsync();
+        var habits = await habitRepo.GetHabitsAsync();
 
-        if (dailyGoals.Count == 0 && weeklyGoals.Count == 0)
+        if (dailyGoals.Count == 0 && weeklyGoals.Count == 0 && habits.Count == 0)
         {
             if (plain)
                 Console.WriteLine("No goals configured. Run 'goals add' to create one.");
@@ -116,6 +118,59 @@ public static class ReportCommand
                 AddStreakRow(weeklyTable, weeklyGoals.Select(g => g.Id).ToList(), weeklyStreaks, "w");
 
                 AnsiConsole.Write(weeklyTable);
+                AnsiConsole.WriteLine();
+            }
+        }
+
+        // Habits
+        if (habits.Count > 0)
+        {
+            var todayChecked = await habitRepo.GetCheckedForDateAsync(today);
+            var yesterdayChecked = await habitRepo.GetCheckedForDateAsync(yesterday);
+            var habitStreaks = await habitRepo.ComputeStreaksAsync(habits, today);
+
+            if (plain)
+            {
+                Console.WriteLine("--- Habits ---");
+                foreach (var h in habits)
+                {
+                    var todayStatus = todayChecked.ContainsKey(h.Id) ? "DONE" : "    ";
+                    var yestStatus = yesterdayChecked.ContainsKey(h.Id) ? "DONE" : "    ";
+                    var streak = habitStreaks.GetValueOrDefault(h.Id, 0);
+                    Console.WriteLine($"  {h.Name}: Today=[{todayStatus}] Yesterday=[{yestStatus}] Streak={streak}d");
+                }
+                Console.WriteLine();
+            }
+            else
+            {
+                AnsiConsole.Write(new Rule("[bold blue]Habits[/]").RuleStyle("blue"));
+                AnsiConsole.WriteLine();
+
+                var habitTable = new Table().Border(TableBorder.Rounded);
+                habitTable.AddColumn("Habit");
+                habitTable.AddColumn(new TableColumn("[bold]Today[/]").Centered());
+                habitTable.AddColumn(new TableColumn("[bold]Yesterday[/]").Centered());
+                habitTable.AddColumn(new TableColumn("[bold]Streak[/]").Centered());
+
+                foreach (var h in habits)
+                {
+                    var todayMark = todayChecked.ContainsKey(h.Id)
+                        ? "[green]✓[/]" : "[grey]—[/]";
+                    var yestMark = yesterdayChecked.ContainsKey(h.Id)
+                        ? "[green]✓[/]" : "[grey]—[/]";
+                    var streak = habitStreaks.GetValueOrDefault(h.Id, 0);
+                    var streakText = streak > 0
+                        ? $"[bold orange1]{streak}d[/]"
+                        : "[grey]0d[/]";
+
+                    habitTable.AddRow(
+                        $"[bold]{Markup.Escape(h.Name)}[/]",
+                        todayMark,
+                        yestMark,
+                        streakText);
+                }
+
+                AnsiConsole.Write(habitTable);
                 AnsiConsole.WriteLine();
             }
         }

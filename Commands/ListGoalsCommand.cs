@@ -5,12 +5,14 @@ namespace Goals.Commands;
 
 public static class ListGoalsCommand
 {
-    public static async Task RunAsync(GoalRepository goalRepo, Func<int, string> getCategoryName, bool plain)
+    public static async Task RunAsync(GoalRepository goalRepo, HabitRepository habitRepo,
+        Func<int, string> getCategoryName, bool plain)
     {
         var dailyGoals = await goalRepo.GetDailyGoalsAsync();
         var weeklyGoals = await goalRepo.GetWeeklyGoalsAsync();
+        var habits = await habitRepo.GetHabitsAsync();
 
-        if (dailyGoals.Count == 0 && weeklyGoals.Count == 0)
+        if (dailyGoals.Count == 0 && weeklyGoals.Count == 0 && habits.Count == 0)
         {
             if (plain)
                 Console.WriteLine("No goals configured. Run 'goals add' to create one.");
@@ -21,16 +23,20 @@ public static class ListGoalsCommand
 
         if (plain)
         {
-            Console.WriteLine("Type     ID  Category  Target   Excluded Days");
-            Console.WriteLine("-------  --  --------  -------  ----------------");
+            Console.WriteLine("Type     ID  Category/Name  Target   Excluded Days");
+            Console.WriteLine("-------  --  -------------  -------  ----------------");
             foreach (var g in dailyGoals)
             {
                 var excluded = g.ExcludedDays.Count > 0 ? string.Join(", ", g.ExcludedDays) : "-";
-                Console.WriteLine($"Daily    {g.Id,-3} {getCategoryName(g.CategoryId),-9} {WeekCalculator.FormatDuration(g.TotalTarget),-8} {excluded}");
+                Console.WriteLine($"Daily    {g.Id,-3} {getCategoryName(g.CategoryId),-14} {WeekCalculator.FormatDuration(g.TotalTarget),-8} {excluded}");
             }
             foreach (var g in weeklyGoals)
             {
-                Console.WriteLine($"Weekly   {g.Id,-3} {getCategoryName(g.CategoryId),-9} {WeekCalculator.FormatDuration(g.TotalTarget),-8} -");
+                Console.WriteLine($"Weekly   {g.Id,-3} {getCategoryName(g.CategoryId),-14} {WeekCalculator.FormatDuration(g.TotalTarget),-8} -");
+            }
+            foreach (var h in habits)
+            {
+                Console.WriteLine($"Habit    {h.Id,-3} {h.Name,-14} -        -");
             }
         }
         else
@@ -38,7 +44,7 @@ public static class ListGoalsCommand
             var table = new Table().Border(TableBorder.Rounded);
             table.AddColumn("Type");
             table.AddColumn("ID");
-            table.AddColumn("Category");
+            table.AddColumn("Category / Name");
             table.AddColumn("Target");
             table.AddColumn("Excluded Days");
 
@@ -59,6 +65,16 @@ public static class ListGoalsCommand
                     g.Id.ToString(),
                     getCategoryName(g.CategoryId),
                     WeekCalculator.FormatDuration(g.TotalTarget),
+                    "—");
+            }
+
+            foreach (var h in habits)
+            {
+                table.AddRow(
+                    "Habit",
+                    h.Id.ToString(),
+                    Markup.Escape(h.Name),
+                    "—",
                     "—");
             }
 

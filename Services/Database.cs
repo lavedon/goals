@@ -56,6 +56,26 @@ public class Database : IDisposable
             """;
         await cmd3.ExecuteNonQueryAsync();
 
+        await using var cmd5 = _connection.CreateCommand();
+        cmd5.CommandText = """
+            CREATE TABLE IF NOT EXISTS Habits (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL UNIQUE
+            );
+            """;
+        await cmd5.ExecuteNonQueryAsync();
+
+        await using var cmd6 = _connection.CreateCommand();
+        cmd6.CommandText = """
+            CREATE TABLE IF NOT EXISTS HabitLog (
+                HabitId INTEGER NOT NULL,
+                Date TEXT NOT NULL,
+                PRIMARY KEY (HabitId, Date),
+                FOREIGN KEY (HabitId) REFERENCES Habits(Id)
+            );
+            """;
+        await cmd6.ExecuteNonQueryAsync();
+
         await using var cmd4 = _connection.CreateCommand();
         cmd4.CommandText = """
             CREATE TABLE IF NOT EXISTS Streaks (

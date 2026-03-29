@@ -5,9 +5,10 @@ namespace Goals.Commands;
 
 public static class RemoveGoalCommand
 {
-    public static async Task RunAsync(GoalRepository goalRepo, Func<int, string> getCategoryName, List<string> extraArgs, bool plain)
+    public static async Task RunAsync(GoalRepository goalRepo, HabitRepository habitRepo,
+        Func<int, string> getCategoryName, List<string> extraArgs, bool plain)
     {
-        // Parse: remove <daily|weekly> <id>  OR  remove <id> (tries both)
+        // Parse: remove <daily|weekly|habit> <id>  OR  remove <id> (tries all)
         string? goalType = null;
         int? id = null;
 
@@ -17,6 +18,8 @@ public static class RemoveGoalCommand
                 goalType = "Daily";
             else if (arg.Equals("weekly", StringComparison.OrdinalIgnoreCase))
                 goalType = "Weekly";
+            else if (arg.Equals("habit", StringComparison.OrdinalIgnoreCase))
+                goalType = "Habit";
             else if (int.TryParse(arg, out var parsed))
                 id = parsed;
         }
@@ -24,14 +27,13 @@ public static class RemoveGoalCommand
         // Interactive fallbacks
         if (goalType == null && id == null)
         {
-            // No args at all — show all goals and prompt
-            await ListGoalsCommand.RunAsync(goalRepo, getCategoryName, plain);
+            await ListGoalsCommand.RunAsync(goalRepo, habitRepo, getCategoryName, plain);
             Console.WriteLine();
 
             goalType = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("Remove which type of goal?")
-                    .AddChoices("Daily", "Weekly"));
+                    .AddChoices("Daily", "Weekly", "Habit"));
         }
 
         if (id == null)
@@ -42,10 +44,12 @@ public static class RemoveGoalCommand
 
         if (goalType == null)
         {
-            // Only ID provided — try both tables
+            // Only ID provided — try all tables
             var removed = await goalRepo.RemoveDailyGoalAsync(id.Value);
             if (!removed)
                 removed = await goalRepo.RemoveWeeklyGoalAsync(id.Value);
+            if (!removed)
+                removed = await habitRepo.RemoveHabitAsync(id.Value);
 
             if (removed)
                 PrintSuccess($"Removed goal #{id.Value}.");
@@ -54,9 +58,13 @@ public static class RemoveGoalCommand
         }
         else
         {
-            var removed = goalType == "Daily"
-                ? await goalRepo.RemoveDailyGoalAsync(id.Value)
-                : await goalRepo.RemoveWeeklyGoalAsync(id.Value);
+            var removed = goalType switch
+            {
+                "Daily" => await goalRepo.RemoveDailyGoalAsync(id.Value),
+                "Weekly" => await goalRepo.RemoveWeeklyGoalAsync(id.Value),
+                "Habit" => await habitRepo.RemoveHabitAsync(id.Value),
+                _ => false
+            };
 
             if (removed)
                 PrintSuccess($"Removed {goalType.ToLower()} goal #{id.Value}.");

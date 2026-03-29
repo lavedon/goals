@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(dotnet run:*)",
-      "Bash(dotnet build:*)"
+      "Bash(dotnet build:*)",
+      "Bash(DB=\"--db=C:/my-coding-projects/timeTracker/Data/timetracker.db\")"
     ]
   }
 }

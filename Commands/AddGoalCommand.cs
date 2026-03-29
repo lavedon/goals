@@ -6,12 +6,22 @@ namespace Goals.Commands;
 
 public static class AddGoalCommand
 {
-    public static async Task RunAsync(GoalRepository goalRepo)
+    public static async Task RunAsync(GoalRepository goalRepo, HabitRepository habitRepo)
     {
         var goalType = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("What type of goal?")
-                .AddChoices("Daily", "Weekly"));
+                .AddChoices("Daily", "Weekly", "Habit"));
+
+        if (goalType == "Habit")
+        {
+            var name = AnsiConsole.Prompt(
+                new TextPrompt<string>("Habit name (e.g. [green]Flossed[/], [green]Meditated[/]):"));
+
+            await habitRepo.AddHabitAsync(name);
+            AnsiConsole.MarkupLine($"[green]Added habit:[/] {Markup.Escape(name)}");
+            return;
+        }
 
         var category = AnsiConsole.Prompt(
             new SelectionPrompt<TaskCategories>()

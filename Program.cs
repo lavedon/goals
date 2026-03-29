@@ -31,13 +31,13 @@ for (int i = 0; i < args.Length; i++)
         continue;
     }
 
-    if (arg is "report" or "add" or "list" or "remove")
+    if (arg is "report" or "add" or "list" or "remove" or "check" or "uncheck")
     {
         command = arg;
         continue;
     }
 
-    // Collect extra positional args (e.g. IDs for remove)
+    // Collect extra positional args (e.g. IDs, habit names)
     if (command != null)
     {
         extraArgs.Add(args[i]);
@@ -65,6 +65,7 @@ await db.InitializeAsync();
 var goalRepo = new GoalRepository(db.Connection);
 var reader = new TimeEntryReader(db.Connection);
 var streakCalc = new StreakCalculator(db.Connection, reader);
+var habitRepo = new HabitRepository(db.Connection);
 
 // Cache category names for display
 var categoryNames = new Dictionary<int, string>();
@@ -83,22 +84,105 @@ else
 switch (command)
 {
     case "report":
-        await ReportCommand.RunAsync(goalRepo, reader, streakCalc, GetCategoryName, plain);
+        await ReportCommand.RunAsync(goalRepo, reader, streakCalc, habitRepo, GetCategoryName, plain);
         break;
     case "add":
-        await AddGoalCommand.RunAsync(goalRepo);
+        await AddGoalCommand.RunAsync(goalRepo, habitRepo);
         break;
     case "list":
-        await ListGoalsCommand.RunAsync(goalRepo, GetCategoryName, plain);
+        await ListGoalsCommand.RunAsync(goalRepo, habitRepo, GetCategoryName, plain);
         break;
     case "remove":
-        await RemoveGoalCommand.RunAsync(goalRepo, GetCategoryName, extraArgs, plain);
+        await RemoveGoalCommand.RunAsync(goalRepo, habitRepo, GetCategoryName, extraArgs, plain);
+        break;
+    case "check":
+        await RunCheckAsync(habitRepo, extraArgs, @checked: true);
+        break;
+    case "uncheck":
+        await RunCheckAsync(habitRepo, extraArgs, @checked: false);
         break;
 }
 
 return 0;
 
-// ── Helpers ───────────────────────────────��──────────────────────────
+// ── Check/Uncheck ───────────────────────────────────────────────────
+
+async Task RunCheckAsync(HabitRepository repo, List<string> args, bool @checked)
+{
+    var today = DateOnly.FromDateTime(DateTime.Now);
+    var input = args.FirstOrDefault();
+
+    Habit? habit = null;
+    if (input != null)
+    {
+        habit = await repo.GetHabitByNameOrIdAsync(input);
+        if (habit == null)
+        {
+            PrintError($"Habit not found: {input}");
+            var habits = await repo.GetHabitsAsync();
+            if (habits.Count > 0)
+            {
+                if (plain)
+                {
+                    Console.WriteLine("Available habits:");
+                    foreach (var h in habits)
+                        Console.WriteLine($"  {h.Id}: {h.Name}");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[bold]Available habits:[/]");
+                    foreach (var h in habits)
+                        AnsiConsole.MarkupLine($"  [green]{h.Id}[/]: {Markup.Escape(h.Name)}");
+                }
+            }
+            return;
+        }
+    }
+    else
+    {
+        // Interactive — pick from list
+        var habits = await repo.GetHabitsAsync();
+        if (habits.Count == 0)
+        {
+            if (plain)
+                Console.WriteLine("No habits configured. Run 'goals add' to create one.");
+            else
+                AnsiConsole.MarkupLine("[yellow]No habits configured. Run [bold]goals add[/] to create one.[/]");
+            return;
+        }
+
+        var todayChecked = await repo.GetCheckedForDateAsync(today);
+        var selected = AnsiConsole.Prompt(
+            new SelectionPrompt<Habit>()
+                .Title(@checked ? "Which habit to check off?" : "Which habit to uncheck?")
+                .UseConverter(h =>
+                {
+                    var mark = todayChecked.ContainsKey(h.Id) ? "[green]✓[/] " : "  ";
+                    return $"{mark}{h.Name}";
+                })
+                .AddChoices(habits));
+        habit = selected;
+    }
+
+    if (@checked)
+    {
+        await repo.CheckAsync(habit.Id, today);
+        if (plain)
+            Console.WriteLine($"Checked: {habit.Name}");
+        else
+            AnsiConsole.MarkupLine($"[green]✓[/] {Markup.Escape(habit.Name)}");
+    }
+    else
+    {
+        await repo.UncheckAsync(habit.Id, today);
+        if (plain)
+            Console.WriteLine($"Un@checked: {habit.Name}");
+        else
+            AnsiConsole.MarkupLine($"[grey]✗[/] {Markup.Escape(habit.Name)}");
+    }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
 
 void PrintUsage()
 {
@@ -109,10 +193,12 @@ void PrintUsage()
         Console.WriteLine("Usage: goals [command] [options]");
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  report    Show goal status (default)");
-        Console.WriteLine("  add       Add a new goal interactively");
-        Console.WriteLine("  list      List all configured goals");
-        Console.WriteLine("  remove    Remove a goal by ID");
+        Console.WriteLine("  report          Show goal status (default)");
+        Console.WriteLine("  add             Add a new goal or habit interactively");
+        Console.WriteLine("  list            List all configured goals and habits");
+        Console.WriteLine("  remove          Remove a goal or habit by ID");
+        Console.WriteLine("  check <name>    Mark a habit as done for today");
+        Console.WriteLine("  uncheck <name>  Unmark a habit for today");
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  --plain       Plain text output (no colors)");
@@ -124,10 +210,12 @@ void PrintUsage()
         var panel = new Panel(
             new Rows(
                 new Markup("[bold]Commands:[/]"),
-                new Markup("  [green]report[/]          Show goal status (default)"),
-                new Markup("  [green]add[/]             Add a new goal interactively"),
-                new Markup("  [green]list[/]            List all configured goals"),
-                new Markup("  [green]remove[/]          Remove a goal by ID"),
+                new Markup("  [green]report[/]              Show goal status (default)"),
+                new Markup("  [green]add[/]                 Add a new goal or habit interactively"),
+                new Markup("  [green]list[/]                List all configured goals and habits"),
+                new Markup("  [green]remove[/]              Remove a goal or habit by ID"),
+                new Markup("  [green]check <name|id>[/]     Mark a habit as done for today"),
+                new Markup("  [green]uncheck <name|id>[/]   Unmark a habit for today"),
                 new Markup(""),
                 new Markup("[bold]Options:[/]"),
                 new Markup("  [green]--plain[/]         Plain text output (no colors)"),
