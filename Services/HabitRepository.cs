@@ -66,6 +66,15 @@ public class HabitRepository(SqliteConnection connection)
         return await cmd2.ExecuteNonQueryAsync() > 0;
     }
 
+    public async Task RenameHabitAsync(int id, string newName)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE Habits SET Name = @Name WHERE Id = @Id";
+        cmd.Parameters.AddWithValue("@Id", id);
+        cmd.Parameters.AddWithValue("@Name", newName);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     public async Task CheckAsync(int habitId, DateOnly date)
     {
         await using var cmd = connection.CreateCommand();

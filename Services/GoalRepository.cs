@@ -88,6 +88,75 @@ public class GoalRepository(SqliteConnection connection)
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
+    public async Task<DailyGoal?> GetDailyGoalAsync(int id)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT Id, CategoryId, TotalTarget, ExcludeDayOfWeek FROM DailyGoals WHERE Id = @Id";
+        cmd.Parameters.AddWithValue("@Id", id);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return new DailyGoal
+            {
+                Id = reader.GetInt32(0),
+                CategoryId = reader.GetInt32(1),
+                TotalTarget = TimeSpan.Parse(reader.GetString(2)),
+                ExcludedDays = ParseExcludedDays(reader.IsDBNull(3) ? null : reader.GetString(3))
+            };
+        }
+        return null;
+    }
+
+    public async Task<WeeklyGoal?> GetWeeklyGoalAsync(int id)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT Id, CategoryId, TotalTarget FROM WeeklyGoals WHERE Id = @Id";
+        cmd.Parameters.AddWithValue("@Id", id);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return new WeeklyGoal
+            {
+                Id = reader.GetInt32(0),
+                CategoryId = reader.GetInt32(1),
+                TotalTarget = TimeSpan.Parse(reader.GetString(2))
+            };
+        }
+        return null;
+    }
+
+    public async Task UpdateDailyGoalAsync(DailyGoal goal)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            UPDATE DailyGoals SET CategoryId = @CategoryId, TotalTarget = @TotalTarget,
+                ExcludeDayOfWeek = @ExcludeDayOfWeek WHERE Id = @Id
+            """;
+        cmd.Parameters.AddWithValue("@Id", goal.Id);
+        cmd.Parameters.AddWithValue("@CategoryId", goal.CategoryId);
+        cmd.Parameters.AddWithValue("@TotalTarget", goal.TotalTarget.ToString());
+        cmd.Parameters.AddWithValue("@ExcludeDayOfWeek",
+            goal.ExcludedDays.Count > 0
+                ? string.Join(",", goal.ExcludedDays)
+                : DBNull.Value);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task UpdateWeeklyGoalAsync(WeeklyGoal goal)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            UPDATE WeeklyGoals SET CategoryId = @CategoryId, TotalTarget = @TotalTarget
+                WHERE Id = @Id
+            """;
+        cmd.Parameters.AddWithValue("@Id", goal.Id);
+        cmd.Parameters.AddWithValue("@CategoryId", goal.CategoryId);
+        cmd.Parameters.AddWithValue("@TotalTarget", goal.TotalTarget.ToString());
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     public async Task<bool> HasAnyGoalsAsync()
     {
         await using var cmd = connection.CreateCommand();
